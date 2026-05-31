@@ -230,6 +230,17 @@ pub fn get_employee_streams(env: &Env, employee: &Address) -> Vec<u64> {
     env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(env))
 }
 
+/// Append multiple stream IDs to the employer index in a single read/write (#286).
+pub fn index_employer_streams_batch(env: &Env, employer: &Address, stream_ids: &Vec<u64>) {
+    let key = DataKey::EmployerStreams(employer.clone());
+    let mut ids: Vec<u64> = env.storage().persistent().get(&key).unwrap_or_else(|| Vec::new(env));
+    for id in stream_ids.iter() {
+        ids.push_back(id);
+    }
+    env.storage().persistent().set(&key, &ids);
+    env.storage().persistent().extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+}
+
 // ---------------------------------------------------------------------------
 // Claimable calculation (#272: early-exit on zero elapsed)
 // ---------------------------------------------------------------------------

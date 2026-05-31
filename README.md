@@ -146,6 +146,8 @@ The `cargo-cache` volume persists the Cargo registry between runs so subsequent 
 
 `create_streams_batch` is cheaper for N ≥ 2 because Stellar charges one base fee per transaction. Per-stream resource overhead grows linearly but is far smaller than the per-transaction base fee saved.
 
+**Gas optimizations in `create_streams_batch` (#286):** The token allowlist is read once before the loop (not once per stream), and the employer stream index is written once after the loop (not once per stream). For a batch of 10 streams this eliminates 18 redundant storage operations vs the naive implementation. See [`benchmarks/gas-optimization-report.md`](benchmarks/gas-optimization-report.md) for full details.
+
 ### Stream Status Lifecycle
 
 ```

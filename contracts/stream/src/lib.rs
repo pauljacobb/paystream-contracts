@@ -28,10 +28,10 @@ use storage::{
     consume_admin_nonce, get_admin, get_admin_nonce, get_employee_streams, get_employer_streams,
     get_fee_bps, get_fee_recipient, get_max_streams_per_employer, get_min_deposit,
     get_pause_history, get_pending_admin, get_pending_employer, has_voted, index_employee_stream,
-    index_employer_stream, load_proposal, load_stream, mark_voted, next_id, next_proposal_id,
-    save_proposal, save_stream, set_admin, set_fee_bps, set_fee_recipient,
-    set_max_streams_per_employer, set_min_deposit, set_pending_admin, set_pending_employer,
-    tally_proposal,
+    index_employer_stream, index_employer_streams_batch, load_proposal, load_stream, mark_voted,
+    next_id, next_proposal_id, save_proposal, save_stream, set_admin, set_fee_bps,
+    set_fee_recipient, set_max_streams_per_employer, set_min_deposit, set_pending_admin,
+    set_pending_employer, tally_proposal,
     add_allowed_token as storage_add_allowed_token,
     remove_allowed_token as storage_remove_allowed_token,
     get_allowed_tokens as storage_get_allowed_tokens,
@@ -250,12 +250,21 @@ impl StreamContract {
         let fee_bps = get_fee_bps(&env);
         let fee_recipient = get_fee_recipient(&env);
 
+        // Hoist allowed-tokens list read outside the loop (#286): one storage read
+        // instead of N reads for a batch of N streams.
+        let allowed_tokens = storage_get_allowed_tokens(&env);
+        let allowlist_active = !allowed_tokens.is_empty();
+
         for p in params.iter() {
             validate_create_stream(p.deposit, min_deposit, p.rate_per_second, p.stop_time, p.cliff_time, now, &employer, &p.employee);
 
+            // Token validation using pre-fetched allowlist — no extra storage read per stream.
+            if allowlist_active {
+                assert!(allowed_tokens.contains(&p.token), "{}", ERR_TOKEN_NOT_ALLOWED);
+            }
+
             let token_client = token::Client::new(&env, &p.token);
             let _ = token_client.try_balance(&employer).expect(ERR_INVALID_TOKEN);
-            assert!(is_token_allowed(&env, &p.token), "{}", ERR_TOKEN_NOT_ALLOWED);
             
             let (stream_fee_bps, net_deposit) = if fee_bps > 0 {
                 if let Some(ref recipient) = fee_recipient {
@@ -293,11 +302,15 @@ impl StreamContract {
                 delegate: None,
             };
             save_stream(&env, &stream);
-            index_employer_stream(&env, &employer, id);
             index_employee_stream(&env, &p.employee, id);
             events::stream_created(&env, id, &employer, &p.employee, p.rate_per_second, stream_fee_bps);
             ids.push_back(id);
         }
+
+        // Batch employer index write: one read + one write for all N streams (#286)
+        // instead of N reads + N writes.
+        index_employer_streams_batch(&env, &employer, &ids);
+
         ids
     }
 

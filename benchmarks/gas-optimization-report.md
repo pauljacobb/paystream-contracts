@@ -77,3 +77,40 @@ Measurements averaged over 10 runs on identical ledger state (stream with 10,000
 
 - **TTL extension batching:** Extend persistent storage TTL in bulk rather than per-stream. Saves ~1 ledger read per operation but requires architectural change.
 - **Packed storage:** Store `withdrawn` and `deposit` as a single `i128` pair. Saves ~64 bytes per read but reduces readability significantly.
+
+---
+
+## `create_streams_batch` Optimization (#286)
+
+**Date:** 2026-05-31
+**Branch:** `feat/batch-gas-optimization-286`
+
+### Problem
+
+For a batch of N streams, the original implementation performed:
+- **N instance storage reads** for the token allowlist (`is_token_allowed` called per stream)
+- **N persistent storage reads + N persistent storage writes** for the employer stream index (`index_employer_stream` called per stream)
+
+### Optimizations Applied
+
+#### 1. Hoist allowed-tokens list read outside the loop
+**Before:** `is_token_allowed(&env, &p.token)` — reads `AllowedTokens` from instance storage on every iteration.
+**After:** `storage_get_allowed_tokens(&env)` called once before the loop; each iteration checks against the in-memory `Vec<Address>`.
+**Savings:** N−1 instance storage reads eliminated for a batch of N streams.
+
+#### 2. Batch employer index write
+**Before:** `index_employer_stream(&env, &employer, id)` — reads the employer's stream ID list, appends one ID, and writes it back on every iteration (N reads + N writes).
+**After:** New `index_employer_streams_batch` helper reads the list once, appends all N IDs, and writes once (1 read + 1 write).
+**Savings:** N−1 persistent storage reads and N−1 persistent storage writes eliminated.
+
+### Benchmark: batch of 10 vs 10 individual `create_stream` calls
+
+| Metric                        | 10× individual | 1× batch (before) | 1× batch (after) | Δ (batch after vs before) |
+|-------------------------------|---------------|-------------------|------------------|---------------------------|
+| Instance storage reads        | 10            | 10                | **1**            | **−90%**                  |
+| Employer index storage reads  | 10            | 10                | **1**            | **−90%**                  |
+| Employer index storage writes | 10            | 10                | **1**            | **−90%**                  |
+| Transactions                  | 10            | 1                 | 1                | 0%                        |
+
+> For a batch of 10 streams: 18 redundant storage operations eliminated (9 instance reads + 9 persistent reads + 9 persistent writes).
+> Savings scale linearly with batch size.
