@@ -39,6 +39,7 @@ Reference the detailed runbook at [docs/runbooks/mainnet-deploy.md](runbooks/mai
 - [ ] `pause_contract` / `unpause_contract` flow tested on testnet
 - [ ] `upgrade` flow tested on testnet with a dummy WASM hash
 - [ ] On-call rotation defined; escalation contacts documented
+- [ ] External uptime monitoring configured with PagerDuty/OpsGenie and status page documented — see [docs/monitoring.md](monitoring.md)
 - [ ] Incident response runbook linked in team wiki
 
 ## 5. Legal & Compliance

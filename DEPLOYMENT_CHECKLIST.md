@@ -138,6 +138,8 @@
 
 ### Monitoring
 - [ ] Event monitoring configured for mainnet
+- [ ] External uptime monitoring configured with PagerDuty/OpsGenie alerting
+- [ ] Public status page published at `status.paystream.example`
 - [ ] Notification delivery monitoring set up
 - [ ] Error tracking configured
 - [ ] Performance monitoring enabled

@@ -1,0 +1,32 @@
+{
+  "name": "PayStream Error Rate Spike",
+  "rule_type_id": "metrics.alert.threshold",
+  "consumer": "alerts",
+  "schedule": { "interval": "1m" },
+  "params": {
+    "index": "paystream-logs-*",
+    "timeField": "@timestamp",
+    "groupBy": "all",
+    "filterQuery": "level:error",
+    "criteria": [
+      {
+        "aggType": "count",
+        "comparator": ">",
+        "threshold": [10],
+        "timeSize": 5,
+        "timeUnit": "m"
+      }
+    ]
+  },
+  "actions": [
+    {
+      "group": "threshold met",
+      "id": "{{connector_id}}",
+      "params": {
+        "message": "PayStream error rate spike: more than 10 errors in the last 5 minutes.\n\nInvestigate at: {{kibana_base_url}}/app/discover#/?_g=(time:(from:now-15m,to:now))&_a=(query:(language:kuery,query:'level:error'))"
+      }
+    }
+  ],
+  "notify_when": "onActionGroupChange",
+  "tags": ["paystream", "error-rate", "monitoring"]
+}

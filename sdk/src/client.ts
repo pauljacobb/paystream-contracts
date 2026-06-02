@@ -246,12 +246,16 @@ export class PayStreamClient {
   }
 
   /**
-   * Employee withdraws all claimable tokens. Returns unsigned transaction XDR.
+   * Employee withdraws claimable tokens. Pass `amount` to withdraw a partial
+   * amount, or omit / pass `0` to withdraw the full claimable balance.
+   * Returns unsigned transaction XDR.
    */
-  async withdraw(employee: string, streamId: bigint): Promise<string> {
+  async withdraw(employee: string, streamId: bigint, amount?: bigint): Promise<string> {
+    const amt = amount ?? 0n;
     return this.buildTx(employee, "withdraw", [
       new Address(employee).toScVal(),
       nativeToScVal(streamId, { type: "u64" }),
+      nativeToScVal(amt, { type: "i128" }),
     ]);
   }
 

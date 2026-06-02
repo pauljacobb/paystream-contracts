@@ -1,0 +1,54 @@
+{
+  "nav": {
+    "dashboard": "Dashboard",
+    "streams": "Streams",
+    "settings": "Settings",
+    "logout": "Log out"
+  },
+  "stream": {
+    "create": "Create Stream",
+    "withdraw": "Withdraw",
+    "pause": "Pause",
+    "resume": "Resume",
+    "cancel": "Cancel Stream",
+    "status": {
+      "active": "Active",
+      "paused": "Paused",
+      "cancelled": "Cancelled",
+      "exhausted": "Exhausted"
+    },
+    "fields": {
+      "recipient": "Recipient",
+      "amount": "Amount",
+      "ratePerSecond": "Rate per second",
+      "startTime": "Start time",
+      "stopTime": "Stop time",
+      "token": "Token"
+    }
+  },
+  "employer": {
+    "dashboard": "Employer Dashboard",
+    "totalLocked": "Total Funds Locked",
+    "activeStreams": "Active Streams",
+    "pausedStreams": "Paused Streams",
+    "monthlySpend": "Monthly Spend"
+  },
+  "common": {
+    "loading": "Loading...",
+    "error": "An error occurred",
+    "empty": "No data available",
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "save": "Save",
+    "export": "Export",
+    "refresh": "Refresh",
+    "next": "Next",
+    "previous": "Previous",
+    "page": "Page"
+  },
+  "auth": {
+    "connect": "Connect Wallet",
+    "disconnect": "Disconnect",
+    "connecting": "Connecting..."
+  }
+}

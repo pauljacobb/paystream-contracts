@@ -1,0 +1,139 @@
+name: Log-Based Alerting
+
+on:
+  schedule:
+    # Run every minute to check error rates
+    - cron: "* * * * *"
+  workflow_dispatch:
+
+env:
+  # Alert thresholds
+  ERROR_RATE_5XX_THRESHOLD: "0.01"   # 1% 5xx error rate
+  AUTH_FAILURE_THRESHOLD: "10"       # 10 auth failures per minute
+  CONTRACT_CALL_FAILURE_THRESHOLD: "1"
+
+jobs:
+  check-alerts:
+    name: Check Log Alerts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch recent contract events
+        id: fetch_events
+        env:
+          STREAM_CONTRACT_ID: ${{ secrets.STREAM_CONTRACT_ID }}
+          HORIZON_URL: ${{ secrets.HORIZON_URL || 'https://horizon-testnet.stellar.org' }}
+        run: |
+          EVENTS=$(curl -sf "${HORIZON_URL}/contracts/${STREAM_CONTRACT_ID}/events?limit=500&order=desc" || echo '{"_embedded":{"records":[]}}')
+          echo "events<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$EVENTS" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Evaluate alert conditions
+        id: evaluate
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          PAGERDUTY_ROUTING_KEY: ${{ secrets.PAGERDUTY_ROUTING_KEY }}
+        run: |
+          # Parse event counts from the last minute
+          EVENTS='${{ steps.fetch_events.outputs.events }}'
+          NOW=$(date +%s)
+          WINDOW_START=$((NOW - 60))
+
+          TOTAL=$(echo "$EVENTS" | python3 -c "
+          import json, sys, time
+          data = json.load(sys.stdin)
+          records = data.get('_embedded', {}).get('records', [])
+          print(len(records))
+          " 2>/dev/null || echo "0")
+
+          ERRORS_5XX=$(echo "$EVENTS" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          records = data.get('_embedded', {}).get('records', [])
+          count = sum(1 for r in records if 'error' in str(r).lower() or '5xx' in str(r).lower())
+          print(count)
+          " 2>/dev/null || echo "0")
+
+          AUTH_FAILURES=$(echo "$EVENTS" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          records = data.get('_embedded', {}).get('records', [])
+          count = sum(1 for r in records if 'auth' in str(r).lower() and 'fail' in str(r).lower())
+          print(count)
+          " 2>/dev/null || echo "0")
+
+          CONTRACT_FAILURES=$(echo "$EVENTS" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          records = data.get('_embedded', {}).get('records', [])
+          count = sum(1 for r in records if 'E0' in str(r))
+          print(count)
+          " 2>/dev/null || echo "0")
+
+          echo "total=$TOTAL" >> "$GITHUB_OUTPUT"
+          echo "errors_5xx=$ERRORS_5XX" >> "$GITHUB_OUTPUT"
+          echo "auth_failures=$AUTH_FAILURES" >> "$GITHUB_OUTPUT"
+          echo "contract_failures=$CONTRACT_FAILURES" >> "$GITHUB_OUTPUT"
+
+          # Compute 5xx error rate
+          if [ "$TOTAL" -gt 0 ]; then
+            ERROR_RATE=$(awk "BEGIN {printf \"%.4f\", $ERRORS_5XX / $TOTAL}")
+          else
+            ERROR_RATE="0"
+          fi
+          echo "error_rate=$ERROR_RATE" >> "$GITHUB_OUTPUT"
+
+      - name: Alert on high 5xx error rate
+        if: >
+          steps.evaluate.outputs.error_rate != '' &&
+          steps.evaluate.outputs.total != '0'
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          PAGERDUTY_ROUTING_KEY: ${{ secrets.PAGERDUTY_ROUTING_KEY }}
+        run: |
+          RATE="${{ steps.evaluate.outputs.error_rate }}"
+          THRESHOLD="${ERROR_RATE_5XX_THRESHOLD}"
+          FIRES=$(awk "BEGIN {print ($RATE > $THRESHOLD) ? 1 : 0}")
+          if [ "$FIRES" = "1" ]; then
+            echo "ALERT: 5xx error rate $RATE exceeds $THRESHOLD"
+            curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+              -H 'Content-type: application/json' \
+              --data "{\"text\":\"🚨 *PayStream Alert*: 5xx error rate \`$RATE\` exceeds threshold \`$THRESHOLD\`\"}"
+            curl -sf -X POST "https://events.pagerduty.com/v2/enqueue" \
+              -H 'Content-type: application/json' \
+              --data "{\"routing_key\":\"$PAGERDUTY_ROUTING_KEY\",\"event_action\":\"trigger\",\"payload\":{\"summary\":\"PayStream 5xx error rate $RATE exceeds $THRESHOLD\",\"severity\":\"critical\",\"source\":\"paystream-contracts\"}}"
+          fi
+
+      - name: Alert on auth failures
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          PAGERDUTY_ROUTING_KEY: ${{ secrets.PAGERDUTY_ROUTING_KEY }}
+        run: |
+          COUNT="${{ steps.evaluate.outputs.auth_failures }}"
+          if [ "$COUNT" -gt "$AUTH_FAILURE_THRESHOLD" ]; then
+            echo "ALERT: $COUNT auth failures in last minute exceeds $AUTH_FAILURE_THRESHOLD"
+            curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+              -H 'Content-type: application/json' \
+              --data "{\"text\":\"🚨 *PayStream Alert*: \`$COUNT\` auth failures/min exceeds threshold \`$AUTH_FAILURE_THRESHOLD\`\"}"
+            curl -sf -X POST "https://events.pagerduty.com/v2/enqueue" \
+              -H 'Content-type: application/json' \
+              --data "{\"routing_key\":\"$PAGERDUTY_ROUTING_KEY\",\"event_action\":\"trigger\",\"payload\":{\"summary\":\"PayStream auth failures $COUNT/min exceeds $AUTH_FAILURE_THRESHOLD\",\"severity\":\"error\",\"source\":\"paystream-contracts\"}}"
+          fi
+
+      - name: Alert on contract call failures
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          PAGERDUTY_ROUTING_KEY: ${{ secrets.PAGERDUTY_ROUTING_KEY }}
+        run: |
+          COUNT="${{ steps.evaluate.outputs.contract_failures }}"
+          if [ "$COUNT" -gt "$CONTRACT_CALL_FAILURE_THRESHOLD" ]; then
+            echo "ALERT: $COUNT contract call failures detected"
+            curl -sf -X POST "$SLACK_WEBHOOK_URL" \
+              -H 'Content-type: application/json' \
+              --data "{\"text\":\"⚠️ *PayStream Alert*: \`$COUNT\` contract call failures detected in last minute\"}"
+            curl -sf -X POST "https://events.pagerduty.com/v2/enqueue" \
+              -H 'Content-type: application/json' \
+              --data "{\"routing_key\":\"$PAGERDUTY_ROUTING_KEY\",\"event_action\":\"trigger\",\"payload\":{\"summary\":\"PayStream contract call failures: $COUNT\",\"severity\":\"warning\",\"source\":\"paystream-contracts\"}}"
+          fi

@@ -415,7 +415,7 @@ Create a salary stream and lock the deposit in escrow. The employer must pre-app
 |---|---|
 | E001 | `rate_per_second` ≤ 0 |
 | E002 | `deposit` ≤ 0 |
-| E007 | `deposit` < minimum deposit |
+| E007 | `deposit` < minimum deposit (set by admin via `set_min_deposit`) |
 | E008 | `rate_per_second` > 1,000,000,000 |
 | E010 | `employer` == `employee` |
 | E014 | Effective stream duration > 100 years |
@@ -423,6 +423,7 @@ Create a salary stream and lock the deposit in escrow. The employer must pre-app
 | E016 | `stop_time` is in the past (when non-zero) |
 | E018 | Token is not on the allowlist (when allowlist is active) |
 | E019 | Token is not a valid SEP-41 contract |
+| E020 | `deposit` < `rate_per_second * 60` — minimum deposit must cover at least 60 seconds of streaming |
 | — | Contract is paused |
 | — | Token transfer fails (insufficient balance or allowance) |
 

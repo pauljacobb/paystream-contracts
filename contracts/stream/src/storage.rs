@@ -379,3 +379,34 @@ pub fn remove_allowed_token(env: &Env, token: &Address) {
 pub fn get_allowed_tokens(env: &Env) -> Vec<Address> {
     env.storage().instance().get(&DataKey::AllowedTokens).unwrap_or_else(|| Vec::new(env))
 }
+
+// ---------------------------------------------------------------------------
+// Multi-sig admin helpers (#275)
+// ---------------------------------------------------------------------------
+
+use crate::types::{AdminOp, MultisigConfig, PendingAdminOp};
+
+pub fn set_multisig_config(env: &Env, cfg: &MultisigConfig) {
+    env.storage().instance().set(&DataKey::MultisigConfig, cfg);
+}
+
+pub fn get_multisig_config(env: &Env) -> Option<MultisigConfig> {
+    env.storage().instance().get(&DataKey::MultisigConfig)
+}
+
+pub fn next_pending_op_id(env: &Env) -> u64 {
+    let count: u64 = env.storage().instance().get(&DataKey::PendingAdminOpCount).unwrap_or(0);
+    let next = count.checked_add(1).expect("pending op count overflow");
+    env.storage().instance().set(&DataKey::PendingAdminOpCount, &next);
+    next
+}
+
+pub fn save_pending_op(env: &Env, op: &PendingAdminOp) {
+    let key = DataKey::PendingAdminOp(op.id);
+    env.storage().persistent().set(&key, op);
+    env.storage().persistent().extend_ttl(&key, TTL_THRESHOLD, TTL_EXTEND_TO);
+}
+
+pub fn load_pending_op(env: &Env, id: u64) -> Option<PendingAdminOp> {
+    env.storage().persistent().get(&DataKey::PendingAdminOp(id))
+}

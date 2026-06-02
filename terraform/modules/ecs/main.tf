@@ -7,36 +7,40 @@ resource "aws_ecs_cluster" "main" {
   }
 }
 
+# ECS Security Group
+# Only accepts traffic from Load Balancer on app port
+# Allows all outbound traffic (needed for DB, Redis, and external services)
 resource "aws_security_group" "ecs" {
   name        = "${var.project_name}-${var.environment}-ecs-sg"
-  description = "Security group for ECS tasks"
+  description = "Security group for ECS tasks - restricted to ALB and backend services"
   vpc_id      = var.vpc_id
-
-  ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  ingress {
-    from_port   = var.app_port
-    to_port     = var.app_port
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
 
   tags = {
     Name        = "${var.project_name}-${var.environment}-ecs-sg"
     Environment = var.environment
   }
+}
+
+# Ingress rule: Allow from ALB on app port
+resource "aws_security_group_rule" "ecs_from_alb" {
+  type                     = "ingress"
+  from_port                = var.app_port
+  to_port                  = var.app_port
+  protocol                 = "tcp"
+  source_security_group_id = var.alb_sg_id
+  security_group_id        = aws_security_group.ecs.id
+  description              = "Allow traffic from ALB to ECS tasks on app port"
+}
+
+# Egress rule: Allow all outbound traffic (for DB, Redis, and external services)
+resource "aws_security_group_rule" "ecs_egress_all" {
+  type              = "egress"
+  from_port         = 0
+  to_port           = 0
+  protocol          = "-1"
+  cidr_blocks       = ["0.0.0.0/0"]
+  security_group_id = aws_security_group.ecs.id
+  description       = "Allow all outbound traffic"
 }
 
 resource "aws_iam_role" "ecs_task_execution_role" {
