@@ -6,9 +6,31 @@
 
 Soroban smart contracts for **PayStream** — decentralized payroll and salary streaming on the Stellar blockchain.
 
+## REST API
+
+The `api/` directory contains a Node.js/Express wrapper around the Soroban stream contracts.
+
+### Endpoints
+
+All responses follow the shape `{ success: boolean, data: object|null, error: string|null }`.
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/streams` | Create a new payment stream. Body: `{ sender, recipient, amount, duration }`. Stubs a `create_stream` contract call. |
+| `GET` | `/streams/:id` | Fetch current state of a stream by ID. Stubs a `get_stream` contract call. |
+| `POST` | `/streams/:id/withdraw` | Trigger a withdrawal from a stream. Body: `{ amount }`. Stubs a `withdraw` contract call. |
+
+### Running locally
+
+```bash
+cd api
+npm install
+npm start   # http://localhost:3001
+```
+
 PayStream lets employers stream salaries to employees in real-time, per-second. Instead of waiting for a monthly paycheck, employees earn and can withdraw their salary continuously as they work — fully on-chain, trustless, and transparent.
 
-> 🎬 **[Watch the demo](https://youtu.be/paystream-demo)** — see the full `create_stream → withdraw` flow in action.
+> 🎬 **[Watch the PayStream stream creation tutorial](docs/video-tutorial.md)** — under 10 minutes, includes wallet setup, create stream, withdraw, and captions.
 
 ---
 

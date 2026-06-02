@@ -1364,3 +1364,94 @@ code {
   background: var(--input-bg);
   color: var(--text);
 }
+
+/* ── Onboarding Wizard (#232) ── */
+.wizard-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.wizard-card {
+  width: min(520px, 95vw);
+  padding: 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.wizard-progress {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.wizard-step-dot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  opacity: 0.45;
+}
+
+.wizard-step-dot--active,
+.wizard-step-dot--done {
+  opacity: 1;
+}
+
+.wizard-dot-icon {
+  font-size: 20px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+}
+
+.wizard-step-dot--active .wizard-dot-icon {
+  border-color: var(--btn-bg);
+  background: var(--btn-bg);
+  color: var(--btn-text);
+}
+
+.wizard-step-dot--done .wizard-dot-icon {
+  border-color: var(--status-active);
+  color: var(--status-active);
+}
+
+.wizard-dot-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.wizard-step-body h3 {
+  margin: 0 0 8px;
+}
+
+.wizard-checklist {
+  padding-left: 20px;
+  margin: 8px 0 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.wizard-nav {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+
+.wizard-skip {
+  margin-right: auto;
+}

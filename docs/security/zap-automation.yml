@@ -1,0 +1,56 @@
+# OWASP ZAP Automation Framework configuration for PayStream (#332)
+# Run: docker run -v $(pwd):/zap/wrk/:rw -t ghcr.io/zaproxy/zaproxy:stable \
+#        zap.sh -cmd -autorun /zap/wrk/zap-automation.yml
+
+env:
+  contexts:
+    - name: paystream-demo
+      urls:
+        - "http://localhost:5173"
+      includePaths:
+        - "http://localhost:5173/.*"
+      excludePaths:
+        - "http://localhost:5173/node_modules/.*"
+
+  parameters:
+    failOnError: true
+    failOnWarning: false
+    progressToStdout: true
+
+jobs:
+  # 1. Spider the application
+  - type: spider
+    parameters:
+      context: paystream-demo
+      maxDuration: 5
+      acceptCookies: false
+
+  # 2. Ajax spider for React SPA
+  - type: spiderAjax
+    parameters:
+      context: paystream-demo
+      maxDuration: 5
+      browserId: firefox-headless
+
+  # 3. Active scan — OWASP Top 10 rules
+  - type: activeScan
+    parameters:
+      context: paystream-demo
+      policy: Default Policy
+      maxRuleDurationInMins: 5
+      maxScanDurationInMins: 30
+
+  # 4. Generate reports
+  - type: report
+    parameters:
+      template: traditional-html
+      reportDir: /zap/wrk/reports/
+      reportFile: zap-report.html
+      reportTitle: "PayStream Penetration Test Report"
+      reportDescription: "OWASP ZAP automated scan results for issue #332"
+
+  - type: report
+    parameters:
+      template: sarif-json
+      reportDir: /zap/wrk/reports/
+      reportFile: zap-report.sarif

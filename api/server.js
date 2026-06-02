@@ -8,7 +8,9 @@ const swaggerJsdoc = require('swagger-jsdoc');
 const swaggerUi = require('swagger-ui-express');
 require('dotenv').config();
 
+const compression = require('compression');
 const correlationId = require('./middleware/correlationId');
+const { apmMiddleware, getMetrics } = require('./middleware/apm');
 const { loadSecrets } = require('./services/secretsService');
 const { closePool } = require('./services/dbService');
 const authMiddleware = require('./middleware/auth');
@@ -28,6 +30,7 @@ const startedAt = new Date();
 
 morgan.token('correlation-id', (req) => req.correlationId || '-');
 app.use(correlationId);
+app.use(apmMiddleware);
 
 const logFormat = ':remote-addr :method :url :status :res[content-length] - :response-time ms :correlation-id';
 if (process.env.NODE_ENV !== 'test') {
@@ -63,6 +66,54 @@ app.use(cors(corsOptions));
 
 // Admin UI for queues
 app.use('/admin/queues', serverAdapter.getRouter());
+
+// Response compression (gzip/brotli) for responses > 1KB
+app.use(compression({
+  threshold: 1024,
+  filter: (req, res) => {
+    // Skip already-compressed content types
+    const contentType = res.getHeader('Content-Type') || '';
+    if (/image|audio|video|zip|gzip|br|compress/.test(contentType)) {
+      return false;
+    }
+    return compression.filter(req, res);
+  },
+}));
+
+// Log compression ratio when response is compressed
+app.use((req, res, next) => {
+  const originalWrite = res.write.bind(res);
+  const originalEnd = res.end.bind(res);
+  let originalSize = 0;
+
+  res.write = (chunk, ...args) => {
+    if (chunk) originalSize += Buffer.byteLength(chunk);
+    return originalWrite(chunk, ...args);
+  };
+
+  res.end = (chunk, ...args) => {
+    if (chunk) originalSize += Buffer.byteLength(chunk);
+    const encoding = res.getHeader('Content-Encoding');
+    if (encoding && originalSize > 0) {
+      const compressedSize = parseInt(res.getHeader('Content-Length') || '0', 10);
+      if (compressedSize > 0) {
+        const ratio = ((1 - compressedSize / originalSize) * 100).toFixed(1);
+        console.log(`[compression] ${req.method} ${req.path} encoding=${encoding} original=${originalSize}B compressed=${compressedSize}B ratio=${ratio}%`);
+        // Record in metrics (as a percent value)
+        try {
+          metricsService.observeCompressionRatio(parseFloat(ratio), { encoding, method: req.method, path: req.path });
+          metricsService.incrementCompressed({ encoding, method: req.method, path: req.path });
+        } catch (err) {
+          // don't break response flow for metrics failures
+          console.error('[metrics] failed to record compression metric', err && err.message ? err.message : err);
+        }
+      }
+    }
+    return originalEnd(chunk, ...args);
+  };
+
+  next();
+});
 
 // Rate limiting
 const limiter = rateLimit({
@@ -237,6 +288,9 @@ app.get('/docs/openapi.yaml', (req, res) => {
   res.send(YAML.stringify(specs));
 });
 
+// Metrics endpoint for Prometheus scraping
+app.get('/metrics', metricsService.metricsEndpoint);
+
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({
@@ -257,6 +311,41 @@ app.get('/ready', async (req, res) => {
     res.status(statusCode).json(readiness);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// --- Soroban contract stub routes ---
+// Standardized response: { success, data, error }
+
+function sorobanStub(method, params) {
+  return { method, params, txHash: '0x' + Math.random().toString(16).slice(2, 18), network: 'testnet' };
+}
+
+app.post('/streams', (req, res) => {
+  try {
+    const data = sorobanStub('create_stream', req.body);
+    res.status(201).json({ success: true, data, error: null });
+  } catch (err) {
+    res.status(500).json({ success: false, data: null, error: err.message });
+  }
+});
+
+app.get('/streams/:id', (req, res) => {
+  try {
+    const data = sorobanStub('get_stream', { id: req.params.id });
+    data.state = { id: req.params.id, status: 'active', streamed: '0', remaining: '1000' };
+    res.json({ success: true, data, error: null });
+  } catch (err) {
+    res.status(500).json({ success: false, data: null, error: err.message });
+  }
+});
+
+app.post('/streams/:id/withdraw', (req, res) => {
+  try {
+    const data = sorobanStub('withdraw', { id: req.params.id, ...req.body });
+    res.json({ success: true, data, error: null });
+  } catch (err) {
+    res.status(500).json({ success: false, data: null, error: err.message });
   }
 });
 

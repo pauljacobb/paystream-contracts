@@ -8,12 +8,15 @@ import {
   FeeEstimate,
   xlmToStroops,
 } from "./streamFormValidation";
+import { useTokenBalance } from "./useTokenBalance";
 
 interface StreamCreationFormProps {
   defaultToken: string;
   onSubmit: (employee: string, token: string, deposit: bigint, rate: bigint, stopTime: bigint) => Promise<void>;
   loading: boolean;
   walletConnected: boolean;
+  /** Employer's public key — used to fetch token balance */
+  publicKey?: string | null;
 }
 
 /**
@@ -25,6 +28,7 @@ export function StreamCreationForm({
   onSubmit,
   loading,
   walletConnected,
+  publicKey,
 }: StreamCreationFormProps) {
   // Form state
   const [employee, setEmployee] = useState("");
@@ -47,6 +51,17 @@ export function StreamCreationForm({
   const depositId = useId();
   const rateId = useId();
   const stopTimeId = useId();
+
+  // Token balance
+  const {
+    balance: tokenBalance,
+    loading: balanceLoading,
+    refresh: refreshBalance,
+  } = useTokenBalance(publicKey ?? null, token || null);
+
+  const depositStroops = deposit ? xlmToStroops(parseFloat(deposit)) : 0n;
+  const insufficientBalance =
+    tokenBalance !== null && depositStroops > 0n && depositStroops > tokenBalance;
 
   // Re-validate on change after first submit attempt
   useEffect(() => {
@@ -96,6 +111,7 @@ export function StreamCreationForm({
       setStopTime("0");
       setSubmitted(false);
       setErrors({});
+      refreshBalance();
     } catch (err) {
       // Error is handled by parent component
     }
@@ -158,6 +174,16 @@ export function StreamCreationForm({
         <label htmlFor={depositId} className="field-label">
           Deposit (XLM) <span aria-hidden="true">*</span>
         </label>
+        {/* Token balance display */}
+        {walletConnected && (
+          <p className="token-balance" aria-live="polite">
+            {balanceLoading
+              ? "Loading balance…"
+              : tokenBalance !== null
+              ? `Balance: ${(Number(tokenBalance) / 10_000_000).toFixed(4)} XLM`
+              : null}
+          </p>
+        )}
         <input
           id={depositId}
           type="number"
@@ -166,15 +192,26 @@ export function StreamCreationForm({
           placeholder="0.00"
           min="0"
           step="any"
-          className={`input${errors.deposit ? " input-error" : ""}`}
+          className={`input${errors.deposit || insufficientBalance ? " input-error" : ""}`}
           aria-required="true"
-          aria-invalid={!!errors.deposit}
-          aria-describedby={errors.deposit ? `${depositId}-err` : undefined}
+          aria-invalid={!!errors.deposit || insufficientBalance}
+          aria-describedby={
+            errors.deposit
+              ? `${depositId}-err`
+              : insufficientBalance
+              ? `${depositId}-balance-warn`
+              : undefined
+          }
           disabled={loading}
         />
         {errors.deposit && (
           <span id={`${depositId}-err`} role="alert" className="field-error">
             {errors.deposit}
+          </span>
+        )}
+        {!errors.deposit && insufficientBalance && (
+          <span id={`${depositId}-balance-warn`} role="alert" className="field-error">
+            Insufficient balance
           </span>
         )}
         <p className="field-hint">Total amount to lock in the stream</p>

@@ -36,9 +36,10 @@ Before following this runbook, confirm the incident qualifies as a disaster (not
 
 | Role | Contact |
 |---|---|
-| Primary on-call | Paged via alerting system |
+| Primary on-call | Paged via alerting system (PagerDuty/OpsGenie) |
 | Engineering lead | Listed in internal contacts doc |
 | AWS support | Console → Support Center |
+| Status page | <https://status.paystream.example> |
 | Stellar network status | <https://status.stellar.org> |
 
 ---

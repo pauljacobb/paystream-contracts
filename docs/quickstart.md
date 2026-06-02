@@ -33,6 +33,8 @@ make build
 
 Compiled WASM files land in `target/wasm32v1-none/release/`.
 
+> 🎬 For a short video walkthrough covering wallet setup, create stream, and withdraw, see the [PayStream video tutorial](video-tutorial.md).
+
 ---
 
 ## 3. Run the test suite
@@ -238,6 +240,91 @@ After step 2 the new employer owns the stream; the old employer loses all contro
 
 ---
 
+## Deploy to Stellar Testnet
+
+Once you've verified everything locally, deploy to the public Stellar testnet.
+
+### Prerequisites
+
+- A funded testnet account. Get one from the [Stellar Friendbot](https://friendbot.stellar.org/).
+- Your account's secret key exported as `STELLAR_SOURCE_ACCOUNT` (or set as the `default` key in Stellar CLI).
+
+### Step 1 — Build optimized WASM
+
+```bash
+make build
+```
+
+### Step 2 — Deploy contracts
+
+```bash
+./scripts/deploy-testnet.sh
+```
+
+This outputs two contract IDs. Save them:
+
+```
+Token:  C...
+Stream: C...
+```
+
+### Step 3 — Initialize contracts
+
+```bash
+export STELLAR_ADMIN_ADDRESS=<YOUR_PUBLIC_KEY>
+export TOKEN_CONTRACT_ID=<TOKEN_ID_FROM_STEP_2>
+export STREAM_CONTRACT_ID=<STREAM_ID_FROM_STEP_2>
+
+./scripts/init-testnet.sh
+```
+
+### Step 4 — Create a testnet stream
+
+Use the same `stellar contract invoke` commands from steps 8–11 above, replacing `--network local` with `--network testnet` and substituting your testnet contract IDs.
+
+```bash
+# Approve
+stellar contract invoke \
+  --id "$TOKEN_CONTRACT_ID" \
+  --source default \
+  --network testnet \
+  -- approve \
+  --from "$STELLAR_ADMIN_ADDRESS" \
+  --spender "$STREAM_CONTRACT_ID" \
+  --amount 10000 \
+  --expiration_ledger 999999
+
+# Create stream
+stellar contract invoke \
+  --id "$STREAM_CONTRACT_ID" \
+  --source default \
+  --network testnet \
+  -- create_stream \
+  --employer "$STELLAR_ADMIN_ADDRESS" \
+  --employee "<EMPLOYEE_PUBLIC_KEY>" \
+  --token_address "$TOKEN_CONTRACT_ID" \
+  --deposit 3600 \
+  --rate_per_second 1 \
+  --stop_time 0 \
+  --cooldown_period 0
+```
+
+### Step 5 — Withdraw on testnet
+
+```bash
+stellar contract invoke \
+  --id "$STREAM_CONTRACT_ID" \
+  --source <employee-key-name> \
+  --network testnet \
+  -- withdraw \
+  --employee "<EMPLOYEE_PUBLIC_KEY>" \
+  --stream_id 1
+```
+
+> Testnet resets periodically. Re-deploy if your contracts disappear.
+
+---
+
 ## Docker alternative (no local Rust/Stellar CLI required)
 
 If you prefer not to install Rust or the Stellar CLI locally:
@@ -255,6 +342,6 @@ docker compose run --rm build stellar contract build
 ## Next steps
 
 - [API Reference](api-reference.md) — full parameter and error documentation
-- [Testnet deployment](testnet.md) — deploy to Stellar testnet
+- [Testnet deployment](testnet.md) — advanced testnet configuration
 - [FAQ](faq.md) — common integration questions
 - [Frontend integration guide](integration/frontend.md) — TypeScript SDK examples

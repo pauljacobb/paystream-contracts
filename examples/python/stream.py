@@ -20,6 +20,10 @@ from stellar_sdk.soroban_rpc import GetTransactionStatus
 from stellar_sdk.xdr import SCVal
 from stellar_sdk import scval
 
+# New SDK (optional usage)
+from paystream_sdk import PayStreamClient
+
+
 RPC_URL = "https://soroban-testnet.stellar.org"
 NETWORK_PASSPHRASE = Network.TESTNET_NETWORK_PASSPHRASE
 

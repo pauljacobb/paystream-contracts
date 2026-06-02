@@ -1,0 +1,113 @@
+name: Deploy Testnet
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: testnet-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Stellar Testnet
+    runs-on: ubuntu-latest
+    environment: testnet
+    outputs:
+      token_id: ${{ steps.deploy-token.outputs.token_id }}
+      stream_id: ${{ steps.deploy-stream.outputs.stream_id }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            ~/.cargo/bin
+            target
+          key: ${{ runner.os }}-cargo-testnet-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-testnet-
+
+      - name: Install Stellar CLI
+        run: cargo install --locked stellar-cli --features opt
+
+      - name: Build contracts
+        run: stellar contract build
+
+      - name: Configure Stellar CLI for testnet
+        run: |
+          stellar network add testnet \
+            --rpc-url https://soroban-testnet.stellar.org \
+            --network-passphrase "Test SDF Network ; September 2015" || true
+
+      - name: Import deployer key
+        run: |
+          echo "${{ secrets.TESTNET_DEPLOYER_SECRET }}" | \
+            stellar keys add testnet-deployer --secret-key
+
+      - name: Deploy token contract
+        id: deploy-token
+        run: |
+          TOKEN_ID=$(stellar contract deploy \
+            --wasm target/wasm32-unknown-unknown/release/paystream_token.wasm \
+            --source testnet-deployer \
+            --network testnet)
+          echo "token_id=$TOKEN_ID" >> "$GITHUB_OUTPUT"
+          echo "Deployed token: $TOKEN_ID"
+
+      - name: Deploy stream contract
+        id: deploy-stream
+        run: |
+          STREAM_ID=$(stellar contract deploy \
+            --wasm target/wasm32-unknown-unknown/release/paystream_stream.wasm \
+            --source testnet-deployer \
+            --network testnet)
+          echo "stream_id=$STREAM_ID" >> "$GITHUB_OUTPUT"
+          echo "Deployed stream: $STREAM_ID"
+
+      - name: Initialise contracts
+        run: |
+          stellar contract invoke \
+            --id "${{ steps.deploy-token.outputs.token_id }}" \
+            --source testnet-deployer \
+            --network testnet \
+            -- initialize \
+              --admin "${{ secrets.TESTNET_ADMIN_ADDRESS }}" \
+              --initial_supply 1000000000000
+
+          stellar contract invoke \
+            --id "${{ steps.deploy-stream.outputs.stream_id }}" \
+            --source testnet-deployer \
+            --network testnet \
+            -- initialize \
+              --admin "${{ secrets.TESTNET_ADMIN_ADDRESS }}"
+
+      - name: Smoke test — stream_count returns 0
+        run: |
+          COUNT=$(stellar contract invoke \
+            --id "${{ steps.deploy-stream.outputs.stream_id }}" \
+            --source testnet-deployer \
+            --network testnet \
+            -- stream_count)
+          echo "stream_count=$COUNT"
+          [ "$COUNT" = "0" ] || (echo "Expected 0, got $COUNT" && exit 1)
+
+      - name: Write contract IDs to job summary
+        run: |
+          echo "## Testnet Deployment — $(date -u '+%Y-%m-%d %H:%M UTC')" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Contract | ID |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Token | \`${{ steps.deploy-token.outputs.token_id }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Stream | \`${{ steps.deploy-stream.outputs.stream_id }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"

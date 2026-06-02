@@ -158,6 +158,10 @@ pub enum DataKey {
     AllowedTokens,
     // Packed config (#272) — replaces individual MinDeposit/FeeBps/MaxStreamsPerEmployer/AdminNonce/Paused keys
     Config,
+    // Multi-sig admin (#275)
+    MultisigConfig,
+    PendingAdminOp(u64),
+    PendingAdminOpCount,
 }
 
 pub const ERR_ZERO_RATE: &str = "E001: rate_per_second must be greater than zero";
@@ -181,3 +185,48 @@ pub const ERR_ALREADY_PAUSED: &str = "E016: stream is already paused";
 pub const ERR_NOT_PAUSED: &str = "E017: stream is not paused";
 pub const ERR_TOKEN_NOT_ALLOWED: &str = "E018: token is not on the allowlist";
 pub const ERR_CLIFF_AFTER_STOP: &str = "E019: cliff time must be before or equal to stop time";
+
+// ---------------------------------------------------------------------------
+// Multi-sig admin types (#275)
+// ---------------------------------------------------------------------------
+
+/// Configuration for M-of-N admin multi-sig.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct MultisigConfig {
+    /// Ordered list of admin addresses.
+    pub admins: soroban_sdk::Vec<Address>,
+    /// Number of signatures required to approve an operation.
+    pub threshold: u32,
+}
+
+/// A sensitive operation pending multi-sig approval.
+#[contracttype]
+#[derive(Clone, Debug, PartialEq)]
+pub enum AdminOp {
+    /// Upgrade the contract WASM to the given hash.
+    Upgrade(soroban_sdk::BytesN<32>),
+    /// Trigger an emergency global pause.
+    EmergencyPause,
+}
+
+/// A pending admin operation awaiting threshold signatures.
+#[contracttype]
+#[derive(Clone, Debug)]
+pub struct PendingAdminOp {
+    pub id: u64,
+    pub op: AdminOp,
+    /// Addresses that have already approved.
+    pub approvals: soroban_sdk::Vec<Address>,
+    /// Ledger timestamp after which this pending op expires.
+    pub expires_at: u64,
+    pub executed: bool,
+}
+
+pub const ERR_MULTISIG_NOT_CONFIGURED: &str = "E021: multisig admin not configured";
+pub const ERR_NOT_MULTISIG_ADMIN: &str = "E022: caller is not a multisig admin";
+pub const ERR_ALREADY_APPROVED: &str = "E023: caller already approved this operation";
+pub const ERR_OP_EXPIRED: &str = "E024: pending operation has expired";
+pub const ERR_OP_ALREADY_EXECUTED: &str = "E025: pending operation already executed";
+pub const ERR_THRESHOLD_NOT_MET: &str = "E026: approval threshold not yet met";
+pub const ERR_OP_NOT_FOUND: &str = "E027: pending operation not found";

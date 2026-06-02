@@ -6,18 +6,34 @@ This directory contains the Terraform configuration to deploy the PayStream infr
 
 The infrastructure consists of:
 - **VPC**: A dedicated VPC with public and private subnets across 2 Availability Zones.
-- **RDS (PostgreSQL)**: A managed PostgreSQL database in the private subnets.
-- **ElastiCache (Redis)**: A managed Redis cluster in the private subnets (used by BullMQ).
-- **ECS (Fargate)**: An ECS cluster to run the API and background services (Indexer, Notification).
+- **Application Load Balancer (ALB)**: Public load balancer providing the only entry point to the API.
+- **ECS (Fargate)**: An ECS cluster running the API and background services, accessible only from the ALB.
+- **RDS (PostgreSQL)**: A managed PostgreSQL database in private subnets, accessible only from ECS.
+- **ElastiCache (Redis)**: A managed Redis cluster in private subnets, accessible only from ECS.
+
+## Network Security
+
+All network access is restricted through security groups:
+- **API**: Only accessible via Application Load Balancer (0.0.0.0/0 → ALB → ECS)
+- **Database**: Only accessible from ECS tasks (ECS → RDS, port 5432)
+- **Cache**: Only accessible from ECS tasks (ECS → Redis, port 6379)
+
+See [NETWORK_SECURITY.md](./NETWORK_SECURITY.md) for detailed network architecture and security group configuration.
 
 ## Directory Structure
 
 ```
 terraform/
-├── modules/           # Reusable modules (VPC, RDS, Redis, ECS)
-└── environments/      # Environment-specific configurations
-    ├── staging/       # Staging environment
-    └── prod/          # Production environment
+├── modules/           # Reusable modules
+│   ├── alb/          # Application Load Balancer
+│   ├── ecs/          # ECS cluster and tasks
+│   ├── rds/          # PostgreSQL database
+│   ├── redis/        # Redis cache
+│   └── vpc/          # VPC and subnets
+├── environments/      # Environment-specific configurations
+│   ├── staging/       # Staging environment
+│   └── prod/          # Production environment
+└── NETWORK_SECURITY.md  # Network security documentation
 ```
 
 ## Prerequisites
@@ -25,6 +41,7 @@ terraform/
 1. [Terraform](https://www.terraform.io/downloads.html) installed.
 2. AWS CLI configured with appropriate credentials.
 3. An S3 bucket named `paystream-terraform-state` and a DynamoDB table named `paystream-terraform-locks` for remote state management.
+4. (Production only) An AWS Certificate Manager SSL certificate for HTTPS.
 
 ## Deployment Instructions
 
@@ -48,9 +65,18 @@ terraform init
 
 Create a `terraform.tfvars` file in the environment directory:
 
+For **staging**:
 ```hcl
 db_username = "paystream_admin"
 db_password = "your-secure-password"
+# alb_certificate_arn is optional for staging (HTTP only)
+```
+
+For **production**:
+```hcl
+db_username = "paystream_admin"
+db_password = "your-secure-password"
+alb_certificate_arn = "arn:aws:acm:us-east-1:ACCOUNT_ID:certificate/CERTIFICATE_ID"
 ```
 
 ### 3. Plan Deployment
@@ -69,7 +95,27 @@ Deploy the infrastructure:
 terraform apply
 ```
 
-### 5. Cleanup
+### 5. Access the Application
+
+Once deployment is complete, get the ALB DNS name:
+
+```bash
+terraform output -raw alb_dns_name
+```
+
+Access the API via the ALB (staging uses HTTP, production uses HTTPS):
+
+**Staging**:
+```bash
+curl http://<ALB_DNS_NAME>/health
+```
+
+**Production**:
+```bash
+curl https://<ALB_DNS_NAME>/health
+```
+
+### 6. Cleanup
 
 To destroy the infrastructure:
 

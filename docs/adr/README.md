@@ -11,6 +11,9 @@ Each ADR documents the problem, the considered alternatives, and the rationale f
 - [0003-storage-layout.md](0003-storage-layout.md)
 - [0004-two-step-admin-transfer.md](0004-two-step-admin-transfer.md)
 - [0005-upgradeability-and-admin-nonce.md](0005-upgradeability-and-admin-nonce.md)
+- [0006-cdn-for-frontend-static-assets.md](0006-cdn-for-frontend-static-assets.md)
+- [0007-release-notes-and-changelog-process.md](0007-release-notes-and-changelog-process.md)
+
 
 ## Template
 

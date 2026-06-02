@@ -7,7 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Release notes process (how this changelog is updated)
+
+- The project uses **git-cliff** (`cliff.toml`) with **Conventional Commits**.
+- During development, merged PRs update the `**[Unreleased]**` section.
+- When cutting a version/tag, git-cliff generates a new version section from commits since the previous tag.
+- For additional narrative (migrations/operational notes), add it under the version heading in this file.
+
 ## [0.1.0] - 2026-04-24
+
 
 ### Added
 

@@ -22,3 +22,8 @@ variable "app_port" {
   type    = number
   default = 3000
 }
+
+variable "alb_sg_id" {
+  type        = string
+  description = "ALB security group ID - required for restricting inbound traffic to ALB only"
+}

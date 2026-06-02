@@ -1,0 +1,93 @@
+name: Canary Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      new_wasm_hash:
+        description: "WASM hash of the new contract version to canary"
+        required: true
+      network:
+        description: "Target network (testnet or mainnet)"
+        required: true
+        default: testnet
+
+env:
+  CANARY_TRAFFIC_PERCENT: 5
+  HEALTHY_DURATION_SECONDS: 3600   # 1 hour of healthy canary before full rollout
+  ERROR_RATE_THRESHOLD: 0.01       # 1% error rate triggers rollback
+
+jobs:
+  canary:
+    name: Canary Rollout
+    runs-on: ubuntu-latest
+    environment: ${{ github.event.inputs.network }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Stellar CLI
+        run: |
+          curl -sSL https://github.com/stellar/stellar-cli/releases/latest/download/stellar-cli-x86_64-unknown-linux-gnu.tar.gz | tar xz
+          sudo mv stellar /usr/local/bin/
+
+      - name: Route 5% traffic to canary
+        env:
+          STELLAR_SECRET_KEY: ${{ secrets.STELLAR_SECRET_KEY }}
+          STREAM_CONTRACT_ID: ${{ secrets.STREAM_CONTRACT_ID }}
+        run: |
+          echo "Routing ${CANARY_TRAFFIC_PERCENT}% traffic to new WASM hash: ${{ github.event.inputs.new_wasm_hash }}"
+          stellar contract invoke \
+            --id "$STREAM_CONTRACT_ID" \
+            --source "$STELLAR_SECRET_KEY" \
+            --network ${{ github.event.inputs.network }} \
+            -- set_canary \
+            --wasm_hash "${{ github.event.inputs.new_wasm_hash }}" \
+            --traffic_percent "$CANARY_TRAFFIC_PERCENT"
+
+      - name: Monitor canary for 1 hour
+        env:
+          STELLAR_SECRET_KEY: ${{ secrets.STELLAR_SECRET_KEY }}
+          STREAM_CONTRACT_ID: ${{ secrets.STREAM_CONTRACT_ID }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          END=$((SECONDS + HEALTHY_DURATION_SECONDS))
+          while [ $SECONDS -lt $END ]; do
+            ERROR_RATE=$(stellar contract invoke \
+              --id "$STREAM_CONTRACT_ID" \
+              --source "$STELLAR_SECRET_KEY" \
+              --network ${{ github.event.inputs.network }} \
+              -- canary_error_rate 2>/dev/null || echo "1")
+
+            echo "Current canary error rate: $ERROR_RATE"
+
+            # Rollback if error rate exceeds threshold
+            if awk "BEGIN {exit !($ERROR_RATE > $ERROR_RATE_THRESHOLD)}"; then
+              echo "Error rate $ERROR_RATE exceeds threshold $ERROR_RATE_THRESHOLD — rolling back"
+              stellar contract invoke \
+                --id "$STREAM_CONTRACT_ID" \
+                --source "$STELLAR_SECRET_KEY" \
+                --network ${{ github.event.inputs.network }} \
+                -- rollback_canary
+              curl -s -X POST "$SLACK_WEBHOOK_URL" \
+                -H 'Content-type: application/json' \
+                --data "{\"text\":\"🚨 Canary rollback triggered: error rate $ERROR_RATE exceeded threshold $ERROR_RATE_THRESHOLD\"}"
+              exit 1
+            fi
+
+            sleep 60
+          done
+          echo "Canary healthy for ${HEALTHY_DURATION_SECONDS}s"
+
+      - name: Full rollout
+        env:
+          STELLAR_SECRET_KEY: ${{ secrets.STELLAR_SECRET_KEY }}
+          STREAM_CONTRACT_ID: ${{ secrets.STREAM_CONTRACT_ID }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          stellar contract invoke \
+            --id "$STREAM_CONTRACT_ID" \
+            --source "$STELLAR_SECRET_KEY" \
+            --network ${{ github.event.inputs.network }} \
+            -- promote_canary
+          curl -s -X POST "$SLACK_WEBHOOK_URL" \
+            -H 'Content-type: application/json' \
+            --data "{\"text\":\"✅ Canary promoted to full rollout: ${{ github.event.inputs.new_wasm_hash }}\"}"

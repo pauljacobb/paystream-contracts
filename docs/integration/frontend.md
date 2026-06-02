@@ -247,9 +247,37 @@ async function safeCreateStream(
 
 ---
 
+## 7. Frontend-to-backend integration expectations (if you use the PayStream backend)
+
+If your frontend calls the PayStream backend (instead of directly querying Soroban for every read), align with the backend’s conventions:
+
+- **Network selection**: send `X-Network: testnet|mainnet` so the backend uses the correct RPC + database schema.
+- **Correlation IDs**: include `X-Correlation-Id` (or let the backend generate/propagate it) so requests can be traced across logs.
+- **Idempotency for retries**: for any payment/stream-creation endpoints that can be retried, include an idempotency key header/body field as required by the endpoint implementation.
+- **CORS**: the backend should expose the required CORS headers for the frontend origin.
+
+When in doubt, treat these backend headers as part of your frontend contract and pin them in your integration tests.
+
+---
+
+## 8. CDN/static assets delivery (recommended)
+
+The frontend is a static SPA (for example the `demo/` app built with Vite). Recommended delivery approach:
+
+- Build with hashed filenames (Vite does this by default for production builds)
+- Host the build output on a CDN
+- Cache policy:
+  - `index.html` (HTML entrypoints): short TTL (e.g., 60s) + must-revalidate
+  - JS/CSS assets (hashed): long TTL (e.g., 1 year) + `immutable`
+
+This guarantees clients receive the newest JS bundle after an upgrade without waiting for manual cache purges.
+
+---
+
 ## Further Reading
 
 - [API Reference](../api-reference.md)
 - [SDK Examples](../../examples/) — runnable JS, Python, and Rust examples
 - [Stellar SDK docs](https://stellar.github.io/js-stellar-sdk/)
 - [Freighter API](https://docs.freighter.app/)
+
